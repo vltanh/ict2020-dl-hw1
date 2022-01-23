@@ -1,58 +1,67 @@
 import torch
-from torch.utils.data import DataLoader
-import torch.nn.functional as F
-import torchvision.transforms as tvtf
 from tqdm import tqdm
+import yaml
 
-from datasets.image_folder import ImageFolderDataset
-from utils.getter import get_instance
-from utils.device import move_to
+from src.utils.getter import get_instance, get_single_data
+from src.utils.device import detach, move_to
 
 import argparse
-import csv
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-d', type=str,
-                    help='path to the folder of query images')
-parser.add_argument('-w', type=str,
-                    help='path to weight files')
-parser.add_argument('-g', type=int, default=None,
-                    help='(single) GPU to use (default: None)')
-parser.add_argument('-b', type=int, default=64,
-                    help='batch size (default: 64)')
-parser.add_argument('-o', type=str, default='test.csv',
-                    help='output file (default: test.csv)')
+parser.add_argument('-c', '--config')
+parser.add_argument('-w', '--weight')
+parser.add_argument('-g', '--gpus', default=None)
 args = parser.parse_args()
 
+config_path = args.config
+config = yaml.load(open(config_path, 'r'), Loader=yaml.Loader)
+config['gpus'] = args.gpus
+
 # Device
-dev_id = 'cuda:{}'.format(args.g) \
-    if torch.cuda.is_available() and args.g is not None \
+dev_id = 'cuda:{}'.format(args.gpus) \
+    if torch.cuda.is_available() and args.gpus is not None \
     else 'cpu'
 device = torch.device(dev_id)
 
-# Load model
-config = torch.load(args.w, map_location=dev_id)
-model = get_instance(config['config']['model']).to(device)
-model.load_state_dict(config['model_state_dict'])
-
 # Load data
-tfs = tvtf.Compose([
-    tvtf.Resize((224, 224)),
-    tvtf.ToTensor(),
-    tvtf.Normalize(mean=[0.485, 0.456, 0.406],
-                   std=[0.229, 0.224, 0.225]),
-])
-dataset = ImageFolderDataset(args.d, tfs)
-dataloader = DataLoader(dataset, batch_size=args.b)
+dataloader = get_single_data(
+    config['dataset'],
+    with_dataset=False
+)
+
+# Load model
+pretrained_cfg = torch.load(args.weight, map_location=dev_id)
+model = get_instance(pretrained_cfg['config']['model']).to(device)
+model.load_state_dict(pretrained_cfg['model_state_dict'])
+
+# Load metric
+metric = {
+    mcfg['name']: get_instance(mcfg)
+    for mcfg in config['metric']
+}
 
 with torch.no_grad():
-    out = [('filename', 'prediction', 'confidence')]
+    for m in metric.values():
+        m.reset()
+
     model.eval()
-    for i, (imgs, fns) in enumerate(tqdm(dataloader)):
-        imgs = move_to(imgs, device)
-        logits = model(imgs)
-        probs = F.softmax(logits, dim=1)
-        confs, preds = torch.max(probs, dim=1)
-        out.extend([(fn, pred.item(), conf.item())
-                    for fn, pred, conf in zip(fns, preds, confs)])
-    csv.writer(open(args.o, 'w')).writerows(out)
+    print('Evaluating........')
+    progress_bar = tqdm(dataloader)
+    for i, (inp, lbl) in enumerate(progress_bar):
+        # Load inputs and labels
+        inp = move_to(inp, device)
+        lbl = move_to(lbl, device)
+
+        # Get network outputs
+        outs = model(inp)
+
+        # Update metric
+        outs = detach(outs)
+        lbl = detach(lbl)
+        for m in metric.values():
+            m.update(outs, lbl)
+
+    print('--- Evaluation result')
+    for k in metric.keys():
+        m = metric[k].value()
+        metric[k].summary()

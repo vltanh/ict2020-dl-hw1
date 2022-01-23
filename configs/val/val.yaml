@@ -1,0 +1,13 @@
+metric:
+    - name: Accuracy
+      args:
+dataset:
+    name: HWDataset
+    args:
+        X_npy_path: data/X_test.npy
+        y_npy_path: data/y_test.npy
+    loader:
+        name: DataLoader
+        args:
+            batch_size: 10000
+            pin_memory: True
