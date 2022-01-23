@@ -23,6 +23,14 @@ yaml
 
 ## **Usage**
 
+### Data preparation
+
+To prepare the synthetic data for this problem, run
+
+```
+python generate_data.py
+```
+
 ### **Training**
 
 To train, run
