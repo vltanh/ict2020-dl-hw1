@@ -36,12 +36,12 @@ python generate_data.py
 To train, run
 
 ```
-python train.py --configs </path/to/config> --gpus <GPU ID>
+python train.py --config </path/to/config> --gpus <GPU ID>
 ```
 
 For example,
 ```
-python train.py --configs configs/train/A.yaml --gpus 0
+python train.py --config configs/train/A.yaml --gpus 0
 ```
 
 You can remove the `gpus` flag to train on CPU.
@@ -59,12 +59,12 @@ tensorboard --logdir runs
 To evaluate a pretrained weights, run
 
 ```
-python test.py --configs </path/to/config> --gpus <GPU ID>
+python test.py --config </path/to/config> --weight </path/to/weight> --gpus <GPU ID>
 ```
 
 For example,
 ```
-python test.py --configs configs/val/val.yaml --gpus 0
+python test.py --config configs/val/val.yaml --weight runs/A-2022_01_23-02_49_04/best_metric_Accuracy.pth --gpus 0
 ```
 
 You can remove the `gpus` flag to evaluate on CPU.
